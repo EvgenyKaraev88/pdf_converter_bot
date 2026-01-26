@@ -172,7 +172,9 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 # Clear user selection
                 del user_selections[user_id]
                 
-                # Offer to start again
+                # Offer to start again - but we need to handle this differently
+                # Since we're outside the conversation handler at this point,
+                # we just send the message with the restart button
                 keyboard = [
                     [InlineKeyboardButton("🔄 Convert Another File", callback_data='restart')]
                 ]
@@ -183,7 +185,8 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     reply_markup=reply_markup
                 )
                 
-                return START
+                # Don't return anything here, as we want the separate handler to manage the restart
+                return ConversationHandler.END
             else:
                 await update.message.reply_text(
                     "❌ Conversion failed. Please try again with a different file."
@@ -206,8 +209,9 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return ConversationHandler.END
 
-async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Restart the conversation."""
+# Additional handler for restart callback outside of conversation
+async def restart_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle restart callback from outside the conversation."""
     query = update.callback_query
     await query.answer()
     
@@ -223,14 +227,23 @@ async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(
-        f'Hi {user.mention_html()}! 👋\n\n'
-        f'I\'m FileConvertBot - your instant file format converter.\n\n'
-        f'<b>Choose a conversion type:</b>',
-        reply_markup=reply_markup
-    )
-    
-    return START
+    # Update the message with the new keyboard
+    try:
+        await query.edit_message_text(
+            f'Hi {user.mention_html()}! 👋\n\n'
+            f'I\'m FileConvertBot - your instant file format converter.\n\n'
+            f'<b>Choose a conversion type:</b>',
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        # If editing fails, send a new message
+        await query.message.reply_text(
+            f'Hi {user.mention_html()}! 👋\n\n'
+            f'I\'m FileConvertBot - your instant file format converter.\n\n'
+            f'<b>Choose a conversion type:</b>',
+            reply_markup=reply_markup
+        )
+
 
 def main() -> None:
     """Run the bot."""
@@ -248,8 +261,7 @@ def main() -> None:
         entry_points=[CommandHandler('start', start)],
         states={
             START: [
-                CallbackQueryHandler(handle_conversion_selection),
-                CallbackQueryHandler(handle_restart, pattern='^restart$')
+                CallbackQueryHandler(handle_conversion_selection)
             ],
             WAITING_FILE: [MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file_upload)],
         },
@@ -258,6 +270,8 @@ def main() -> None:
     )
 
     application.add_handler(conv_handler)
+    # Add the restart handler separately so it works even outside the conversation
+    application.add_handler(CallbackQueryHandler(restart_callback_handler, pattern='^restart$'))
 
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)

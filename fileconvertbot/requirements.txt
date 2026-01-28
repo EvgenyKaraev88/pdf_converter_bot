@@ -1,6 +1,6 @@
-python-telegram-bot==20.3
-Pillow==10.0.0
-img2pdf==0.4.4
+python-telegram-bot==22.6
+Pillow==12.1.0
+img2pdf==0.6.3
 python-docx==0.8.11
 PyPDF2==3.0.1
-reportlab==4.0.4
+reportlab==4.3.0

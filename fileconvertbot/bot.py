@@ -13,8 +13,6 @@ from telegram.ext import (
 )
 
 from converters.image_to_pdf import convert_image_to_pdf
-from converters.word_to_pdf import convert_word_to_pdf
-from converters.pdf_to_word import convert_pdf_to_word
 from utils.file_validation import validate_file_type, validate_file_size
 from utils.temp_manager import cleanup_temp_files
 
@@ -28,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Define conversation states
 START, WAITING_FILE, PROCESSING = range(3)
 
-# Store user selections temporarily (in production, consider using a database)
+# Store user selections temporarily
 user_selections = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -37,19 +35,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     keyboard = [
         [
-            InlineKeyboardButton("📷 Image to PDF", callback_data='image_to_pdf'),
-            InlineKeyboardButton("📄 Word to PDF", callback_data='word_to_pdf')
-        ],
-        [
-            InlineKeyboardButton("📋 PDF to Word", callback_data='pdf_to_word')
+            InlineKeyboardButton("📷 Image to PDF", callback_data='image_to_pdf')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_html(
-        f'Hi {user.mention_html()}! 👋\n\n'
-        f'I\'m FileConvertBot - your instant file format converter.\n\n'
-        f'<b>Choose a conversion type:</b>',
+        f'Привет {user.mention_html()}! 👋\n\n'
+        f'Я FileConvertBot - ваш мгновенный конвертер форматов файлов.\n\n'
+        f'<b>Выберите тип конверсии:</b>',
         reply_markup=reply_markup
     )
     
@@ -68,12 +62,10 @@ async def handle_conversion_selection(update: Update, context: ContextTypes.DEFA
     
     # Send appropriate prompt based on selection
     prompts = {
-        'image_to_pdf': 'Please send me an image file (JPG/PNG) to convert to PDF.',
-        'word_to_pdf': 'Please send me a Word document (.docx) to convert to PDF.',
-        'pdf_to_word': 'Please send me a PDF file to convert to Word (.docx).'
+        'image_to_pdf': 'Пожалуйста, пришлите мне файл изображения (JPG/PNG) для конвертации в PDF.'
     }
     
-    await query.edit_message_text(text=f"Selected: {prompts[conversion_type]}\n\nUploading...")
+    await query.edit_message_text(text=f"Выбрано: {prompts[conversion_type]}\n\nПожалуйста, отправьте файл сейчас.")
     
     return WAITING_FILE
 
@@ -90,7 +82,6 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
     conversion_type = user_selections[user_id]
     
     # Get file info
-    file_info = None
     file_obj = None
     
     # Check if the message contains a document
@@ -103,21 +94,19 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         file_ext = '.jpg'  # Photos from Telegram are always JPEG
     else:
         await update.message.reply_text(
-            "❌ No file found. Please send a valid file."
+            "❌ Файл не найден. Пожалуйста, отправьте действительный файл."
         )
         return WAITING_FILE
     
     # Validate file type
     expected_extensions = {
-        'image_to_pdf': ['.jpg', '.jpeg', '.png'],
-        'word_to_pdf': ['.docx'],
-        'pdf_to_word': ['.pdf']
+        'image_to_pdf': ['.jpg', '.jpeg', '.png']
     }
     
     if file_ext not in expected_extensions[conversion_type]:
         await update.message.reply_text(
-            f"❌ Invalid file format. Expected: {', '.join(expected_extensions[conversion_type])}\n"
-            f"Received: {file_ext}\n\nPlease try again with the correct file type."
+            f"❌ Неверный формат файла. Ожидаемый: {', '.join(expected_extensions[conversion_type])}\n"
+            f"Полученный: {file_ext}\n\nПожалуйста, попробуйте еще раз, выбрав правильный тип файла."
         )
         return WAITING_FILE
     
@@ -125,10 +114,10 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         new_file = await context.bot.get_file(file_obj.file_id)
         
-        # Check file size (Telegram limit is 20MB)
-        if hasattr(file_obj, 'file_size') and file_obj.file_size > 20 * 1024 * 1024:  # 20MB
+        # Check file size (Telegram limit is 6MB)
+        if hasattr(file_obj, 'file_size') and file_obj.file_size > 6 * 1024 * 1024:  # 6MB
             await update.message.reply_text(
-                "❌ File size exceeds 20MB limit. Please send a smaller file."
+                "❌ Размер файла превышает лимит 6 МБ. Пожалуйста, пришлите файл меньшего размера."
             )
             return WAITING_FILE
         
@@ -139,32 +128,21 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Process file based on conversion type
         try:
-            await update.message.reply_text("🔄 Processing your file...")
+            await update.message.reply_text("🔄 Обработка вашего файла...")
             
             output_path = None
             
             if conversion_type == 'image_to_pdf':
                 output_path = convert_image_to_pdf(input_path)
-            elif conversion_type == 'word_to_pdf':
-                output_path = convert_word_to_pdf(input_path)
-            elif conversion_type == 'pdf_to_word':
-                output_path = convert_pdf_to_word(input_path)
             
             if output_path and os.path.exists(output_path):
                 # Send the converted file
                 with open(output_path, 'rb') as output_file:
-                    if conversion_type.endswith('_pdf'):
-                        await context.bot.send_document(
-                            chat_id=update.effective_chat.id,
-                            document=output_file,
-                            caption="✅ Your file has been converted! Download link above."
-                        )
-                    else:  # pdf_to_word
-                        await context.bot.send_document(
-                            chat_id=update.effective_chat.id,
-                            document=output_file,
-                            caption="✅ Your file has been converted! Download link above."
-                        )
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=output_file,
+                        caption="✅ Ваш файл конвертирован!"
+                    )
                 
                 # Clean up temporary files
                 cleanup_temp_files([input_path, output_path])
@@ -172,83 +150,86 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 # Clear user selection
                 del user_selections[user_id]
                 
-                # Offer to start again - but we need to handle this differently
-                # Since we're outside the conversation handler at this point,
-                # we just send the message with the restart button
-                keyboard = [
-                    [InlineKeyboardButton("🔄 Convert Another File", callback_data='restart')]
-                ]
+                # Send restart keyboard directly
+                keyboard = [[InlineKeyboardButton("🔄 Конвертировать другой файл", callback_data='start_over')]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await update.message.reply_text(
-                    "Would you like to convert another file?",
+                    "Хотите конвертировать другой файл?",
                     reply_markup=reply_markup
                 )
                 
-                # Don't return anything here, as we want the separate handler to manage the restart
+                # We're ending the conversation, but will handle restart separately
                 return ConversationHandler.END
             else:
                 await update.message.reply_text(
-                    "❌ Conversion failed. Please try again with a different file."
+                    "❌ Преобразование не удалось. Пожалуйста, попробуйте еще раз с другим файлом."
                 )
                 cleanup_temp_files([input_path])
-                return ConversationHandler.END
+                return WAITING_FILE
                 
         except Exception as e:
             logger.error(f"Conversion error: {str(e)}")
             await update.message.reply_text(
-                f"❌ Conversion failed: {str(e)}\nPlease try again."
+                f"❌ Преобразование не удалось: {str(e)}\nПожалуйста, попробуйте еще раз."
             )
             cleanup_temp_files([input_path])
-            return ConversationHandler.END
+            return WAITING_FILE
     
     except Exception as e:
         logger.error(f"File download error: {str(e)}")
         await update.message.reply_text(
-            f"❌ Failed to download file: {str(e)}"
+            f"❌ Не удалось загрузить файл:{str(e)}"
         )
-        return ConversationHandler.END
+        return WAITING_FILE
 
-# Additional handler for restart callback outside of conversation
-async def restart_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle restart callback from outside the conversation."""
+async def start_over_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle restart callback - reinitialize the conversation."""
     query = update.callback_query
     await query.answer()
     
-    user = update.effective_user
+    # Clear any existing user selection
+    user_id = query.from_user.id
+    if user_id in user_selections:
+        del user_selections[user_id]
+    
+    # Send the start message with keyboard
     keyboard = [
         [
-            InlineKeyboardButton("📷 Image to PDF", callback_data='image_to_pdf'),
-            InlineKeyboardButton("📄 Word to PDF", callback_data='word_to_pdf')
-        ],
-        [
-            InlineKeyboardButton("📋 PDF to Word", callback_data='pdf_to_word')
+            InlineKeyboardButton("📷 Image to PDF", callback_data='image_to_pdf')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Update the message with the new keyboard
-    try:
-        await query.edit_message_text(
-            f'Hi {user.mention_html()}! 👋\n\n'
-            f'I\'m FileConvertBot - your instant file format converter.\n\n'
-            f'<b>Choose a conversion type:</b>',
-            reply_markup=reply_markup
-        )
-    except Exception as e:
-        # If editing fails, send a new message
-        await query.message.reply_text(
-            f'Hi {user.mention_html()}! 👋\n\n'
-            f'I\'m FileConvertBot - your instant file format converter.\n\n'
-            f'<b>Choose a conversion type:</b>',
-            reply_markup=reply_markup
-        )
+    await query.edit_message_text(
+        text=f'Привет {query.from_user.first_name}! 👋\n\n'
+             f'Я FileConvertBot - ваш мгновенный конвертер форматов файлов.\n\n'
+             f'<b>Выберите тип конверсии:</b>',
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+    
+    # Return START state to reactivate conversation
+    return START
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel and end the conversation."""
+    user = update.effective_user
+    user_id = user.id
+    
+    # Clear user selection if exists
+    if user_id in user_selections:
+        del user_selections[user_id]
+    
+    await update.message.reply_text(
+        "Операция отменена. Используйте /start, чтобы начать заново."
+    )
+    
+    return ConversationHandler.END
 
 def main() -> None:
     """Run the bot."""
-    # Create the Application and pass it your bot's token
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TOKEN = "8245389383:AAGJqBia5iHGORMR5_teCgSeC4Qyl-uH3bE"
     
     if not TOKEN:
         print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
@@ -258,22 +239,28 @@ def main() -> None:
 
     # Create conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+            CallbackQueryHandler(start_over_callback, pattern='^start_over$')
+        ],
         states={
             START: [
-                CallbackQueryHandler(handle_conversion_selection)
+                CallbackQueryHandler(handle_conversion_selection, pattern='^image_to_pdf$')
             ],
-            WAITING_FILE: [MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file_upload)],
+            WAITING_FILE: [
+                MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file_upload),
+                CommandHandler('cancel', cancel)
+            ],
         },
-        fallbacks=[CommandHandler('start', start)],
-        conversation_timeout=300,  # 5 minutes timeout
+        fallbacks=[CommandHandler('cancel', cancel)],
+        conversation_timeout=300,
+        name="file_converter",
+        persistent=False,
     )
 
     application.add_handler(conv_handler)
-    # Add the restart handler separately so it works even outside the conversation
-    application.add_handler(CallbackQueryHandler(restart_callback_handler, pattern='^restart$'))
 
-    # Run the bot until the user presses Ctrl-C
+    # Run the bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':

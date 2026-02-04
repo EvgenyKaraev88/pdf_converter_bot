@@ -229,7 +229,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main() -> None:
     """Run the bot."""
-    TOKEN = ""
+    TOKEN = "8245389383:AAGJqBia5iHGORMR5_teCgSeC4Qyl-uH3bE"
     
     if not TOKEN:
         print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
